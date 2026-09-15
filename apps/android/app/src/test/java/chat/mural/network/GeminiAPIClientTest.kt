@@ -72,6 +72,15 @@ class GeminiAPIClientTest {
         assertEquals(1, result.usage.searches)
     }
 
+    @Test fun `background assessment does not trigger or interrupt a spoken reply`() {
+        fun command(type: String) = buildJsonObject { put("type", type); put("content", "Teaching guidance") }
+        val silent = GeminiLiveTransport.commandPayload(command("session.thinking.append"))!!
+        assertEquals(JsonPrimitive(false), silent["clientContent"]!!.jsonObject["turnComplete"])
+        val greeting = GeminiLiveTransport.commandPayload(command("session.instructions.append"))!!
+        assertEquals(JsonPrimitive(true), greeting["clientContent"]!!.jsonObject["turnComplete"])
+        assertNull(GeminiLiveTransport.commandPayload(command("unknown")))
+    }
+
     @Test fun `voice setup enables both transcripts and audio responses`() {
         val setup = GeminiLiveTransport.setup("Practice English")["setup"]!!.jsonObject
         assertTrue(setup.containsKey("inputAudioTranscription"))

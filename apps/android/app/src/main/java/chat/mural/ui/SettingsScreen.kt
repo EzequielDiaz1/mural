@@ -94,6 +94,12 @@ fun SettingsScreen(vm: MuralViewModel, onExport: () -> Unit, onImport: () -> Uni
                     stringResource(R.string.settings_gemini_note)) {
                     SettingsChoiceRow(stringResource(R.string.settings_ai_provider), vm.aiProvider.label, vm.aiProvider.name,
                         chat.mural.network.AIProvider.entries.map { it.name to it.label }, "settings-ai-provider", !vm.isRunning, vm::selectAIProvider)
+                    SettingsDivider()
+                    SettingsRow(stringResource(if (vm.hasKey) R.string.settings_replace_key else R.string.settings_save_key),
+                        enabled = !vm.isRunning, tint = MuralColors.Secondary, chevron = true, onClick = { keyDialog = true })
+                    SettingsDivider()
+                    SettingsRow(stringResource(R.string.settings_open_api_keys), tint = MuralColors.Secondary,
+                        onClick = { open(if (vm.usesGemini) "https://aistudio.google.com/app/api-keys" else "https://platform.openai.com/api-keys") })
                 }
             }
             item {

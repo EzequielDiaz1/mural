@@ -1041,6 +1041,7 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteSession(id: String) {
         if (isRunning) return
         if (reportState.value.selection?.sessionID == id) reports.dismiss()
+        aiPreferences.edit().remove("session.$id").apply()
         finalAssessments.cancel(id); hostedFinalAssessmentJobs.remove(id)?.cancel(); hostedBindings.forgetLearning(id)
         finalAssessmentTickets = finalAssessmentTickets.filterNot { it.sessionID == id }
         if (session?.id == id) resetConversation()
@@ -1062,6 +1063,7 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
         reports.dismiss()
         finalAssessments.cancelAll(); hostedSessionIDs.forEach(hostedBindings::forgetLearning)
         hostedFinalAssessmentJobs.values.toList().forEach { it.cancel() }; hostedFinalAssessmentJobs.clear(); resetConversation()
+        aiPreferences.edit().apply { aiPreferences.all.keys.filter { it.startsWith("session.") }.forEach { remove(it) } }.apply()
         finalAssessmentTickets = emptyList()
         archive = archive.copy(sessions = mutableListOf(), preferences = archive.preferences.copy(hiddenWords = emptyList())); persist()
     }

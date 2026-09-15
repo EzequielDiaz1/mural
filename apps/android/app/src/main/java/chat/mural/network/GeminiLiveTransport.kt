@@ -50,9 +50,9 @@ class GeminiLiveTransport(context: Context, private val scope: CoroutineScope) :
             if (app.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
                 throw IOException(app.getString(R.string.error_transport_microphone))
             try {
-            claimFocus(a)
-            // Allocation is non-cancellable so cleanup cannot race a partially constructed recorder.
-            withContext(NonCancellable + Dispatchers.IO) { createAudio(a) }
+                claimFocus(a)
+                // Cleanup waits for allocation before releasing the native resources.
+                withContext(NonCancellable + Dispatchers.IO) { createAudio(a) }
             } finally { a.allocated.complete(Unit) }
             currentCoroutineContext().ensureActive()
             a.socket = client.newWebSocket(request, object : WebSocketListener() {
@@ -102,7 +102,10 @@ class GeminiLiveTransport(context: Context, private val scope: CoroutineScope) :
         manager.mode = AudioManager.MODE_IN_COMMUNICATION
         a.ownsMode = true
         @Suppress("DEPRECATION")
-        manager.isSpeakerphoneOn = true
+        manager.isSpeakerphoneOn = manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).none {
+            it.type in setOf(AudioDeviceInfo.TYPE_WIRED_HEADSET, AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                AudioDeviceInfo.TYPE_USB_HEADSET, AudioDeviceInfo.TYPE_USB_DEVICE)
+        }
     }
 
     @SuppressLint("MissingPermission")
@@ -165,7 +168,7 @@ class GeminiLiveTransport(context: Context, private val scope: CoroutineScope) :
                         offset += n
                         a.outputLevel = level(frame.bytes, frame.bytes.size)
                     }
-                    if (a.audio.isEmpty) a.outputLevel = 0.0
+                    a.outputLevel = 0.0
                 }
             } catch (_: Exception) { fail(a, R.string.error_transport_audio_stopped) }
         }
@@ -219,14 +222,7 @@ class GeminiLiveTransport(context: Context, private val scope: CoroutineScope) :
     override fun send(event: JsonObject): Boolean {
         val a = active ?: return false
         if (!a.ready.isCompleted) return false
-        val text = (event["content"] as? JsonPrimitive)?.contentOrNull ?: return false
-        return a.socket?.send(buildJsonObject {
-            put("clientContent", buildJsonObject {
-                put("turns", buildJsonArray { add(buildJsonObject {
-                    put("role", "user"); put("parts", buildJsonArray { add(buildJsonObject { put("text", text) }) })
-                }) }); put("turnComplete", true)
-            })
-        }.toString()) == true
+        return a.socket?.send(commandPayload(event)?.toString() ?: return false) == true
     }
 
     override fun mute(muted: Boolean) {
@@ -300,6 +296,21 @@ class GeminiLiveTransport(context: Context, private val scope: CoroutineScope) :
     }
 
     companion object {
+        internal fun commandPayload(event: JsonObject): JsonObject? {
+            val text = (event["content"] as? JsonPrimitive)?.contentOrNull ?: return null
+            val type = (event["type"] as? JsonPrimitive)?.contentOrNull ?: return null
+            if (type !in setOf("session.thinking.append", "session.instructions.append", "session.commentary.append")) return null
+            return buildJsonObject {
+                put("clientContent", buildJsonObject {
+                    put("turns", buildJsonArray { add(buildJsonObject {
+                        put("role", "user")
+                        put("parts", buildJsonArray { add(buildJsonObject { put("text", text) }) })
+                    }) })
+                    // Background assessment notes update context without cutting off the speaker.
+                    put("turnComplete", type != "session.thinking.append")
+                })
+            }
+        }
         private const val MAX_EVENT_BYTES = 524_288
         internal fun setup(instructions: String) = buildJsonObject { put("setup", buildJsonObject {
             put("model", "models/${GeminiAPIClient.LIVE_MODEL}")
