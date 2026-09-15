@@ -49,7 +49,10 @@ class SettingsDetailsTest {
         settings.performScrollToNode(hasTestTag("advanced-api-key"))
         compose.onNodeWithTag("advanced-api-key").performClick()
         settings.performScrollToNode(hasText(activity.getString(R.string.settings_open_api_keys), substring = true))
-        settings.performScrollToNode(hasText(activity.getString(R.string.settings_models_footer)))
+        val vm = ViewModelProvider(activity)[MuralViewModel::class.java]
+        val models = if (vm.usesGemini) "Gemini Live · ${chat.mural.network.GeminiAPIClient.LIVE_MODEL}\n${chat.mural.network.GeminiAPIClient.TEXT_MODEL}"
+            else activity.getString(R.string.settings_models_footer)
+        settings.performScrollToNode(hasText(models))
         settings.performScrollToNode(hasText(activity.getString(R.string.settings_app_version_footer, version)))
     }
 }
