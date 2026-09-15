@@ -10,13 +10,17 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-/** Stores the OpenAI API key encrypted by a non-exportable Android Keystore key. */
+/** Stores each provider key separately, encrypted by a non-exportable Android Keystore key. */
 class CredentialStore internal constructor(
     context: Context,
     preferencesName: String,
     private val keyAlias: String,
+    private val provider: AIProvider = AIProvider.OPENAI,
 ) {
     constructor(context: Context) : this(context, PREFERENCES, KEY_ALIAS)
+    constructor(context: Context, provider: AIProvider) : this(context,
+        if (provider == AIProvider.OPENAI) PREFERENCES else "mural_gemini_credentials",
+        if (provider == AIProvider.OPENAI) KEY_ALIAS else "chat.mural.gemini.aes", provider)
 
     private val preferences = context.applicationContext.getSharedPreferences(preferencesName, Context.MODE_PRIVATE)
 
@@ -26,7 +30,7 @@ class CredentialStore internal constructor(
     @Synchronized
     fun save(key: String) {
         val value = key.trim()
-        if (!value.startsWith("sk-") || value.length < 20 || value.any(Char::isWhitespace)) {
+        if (!provider.acceptsKey(value)) {
             throw CredentialException.Invalid
         }
 
@@ -59,7 +63,7 @@ class CredentialStore internal constructor(
                 GCMParameterSpec(GCM_TAG_BITS, Base64.decode(encodedIv, Base64.NO_WRAP)),
             )
             cipher.doFinal(Base64.decode(encodedCiphertext, Base64.NO_WRAP)).toString(Charsets.UTF_8)
-                .takeIf { it.startsWith("sk-") && it.length >= 20 && it.none(Char::isWhitespace) }
+                .takeIf(provider::acceptsKey)
                 ?: clearUnreadableCredential()
         } catch (_: Exception) {
             clearUnreadableCredential()
