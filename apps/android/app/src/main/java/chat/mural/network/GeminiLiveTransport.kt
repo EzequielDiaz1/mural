@@ -66,18 +66,19 @@ class GeminiLiveTransport(context: Context, private val scope: CoroutineScope) :
                     else receive(a, bytes.utf8())
                 }
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                    val res = when (response?.code) {
-                        400, 401, 403 -> R.string.error_http_401
-                        429 -> R.string.error_http_429
-                        else -> R.string.error_transport_network_lost
+                    val message = when (response?.code) {
+                        400, 401, 403 -> app.getString(R.string.gemini_http_auth_error, response.code)
+                        429 -> app.getString(R.string.gemini_http_quota_error, response.code)
+                        null -> app.getString(R.string.gemini_network_error, t.javaClass.simpleName)
+                        else -> app.getString(R.string.gemini_http_error, response.code)
                     }
-                    fail(a, res)
+                    fail(a, message)
                 }
                 override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
                     webSocket.close(code, null)
-                    fail(a, if (code == 1008) R.string.error_http_403_404 else R.string.gemini_session_ended)
+                    fail(a, closeMessage(code))
                 }
-                override fun onClosed(webSocket: WebSocket, code: Int, reason: String) = fail(a, R.string.gemini_session_ended)
+                override fun onClosed(webSocket: WebSocket, code: Int, reason: String) = fail(a, closeMessage(code))
             })
             withTimeout(30_000) { a.ready.await() }
         } catch (e: Throwable) {
@@ -265,6 +266,14 @@ class GeminiLiveTransport(context: Context, private val scope: CoroutineScope) :
     private fun fail(a: Attempt, resource: Int) { scope.launch {
         if (active === a) { disconnect(); onFailure?.invoke(app.getString(resource)) }
     } }
+    private fun fail(a: Attempt, message: String) { scope.launch {
+        if (active === a) { disconnect(); onFailure?.invoke(message) }
+    } }
+    private fun closeMessage(code: Int): String = when (code) {
+        1008 -> app.getString(R.string.gemini_ws_policy_error, code)
+        1011, 1012, 1013 -> app.getString(R.string.gemini_ws_service_error, code)
+        else -> app.getString(R.string.gemini_ws_closed, code)
+    }
     private fun levels(a: Attempt, input: Double, output: Double) { scope.launch {
         if (active === a) onLevels?.invoke(input, output)
     } }

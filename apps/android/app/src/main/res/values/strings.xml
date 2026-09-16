@@ -248,4 +248,11 @@
     <string name="settings_gemini_note">Choose Gemini to use your Google AI Studio key. Each provider has a separate encrypted key. Free quotas have limits; paid projects can incur charges. Gemini voice currently uses the phone speaker or wired headphones.</string>
     <string name="settings_gemini_usage">Gemini charges depend on your model and project quota. Check Google AI Studio for actual usage. Voice cost is not estimated here. Live voice cannot verify current facts; use the Topics search instead.</string>
     <string name="gemini_session_ended">Gemini ended the connection. Check your key, model access and quota, then start a new conversation.</string>
+    <string name="gemini_http_auth_error">Gemini rejected the request (HTTP %1$d). Check the key and model access.</string>
+    <string name="gemini_http_quota_error">Gemini applied a usage limit (HTTP %1$d). Check quota and wait before retrying.</string>
+    <string name="gemini_http_error">Gemini could not start the session (HTTP %1$d).</string>
+    <string name="gemini_network_error">The connection was lost before Gemini replied (%1$s). Check your Internet connection and try again.</string>
+    <string name="gemini_ws_policy_error">Gemini rejected the session (WebSocket %1$d). This usually means an unsupported key, model, or configuration.</string>
+    <string name="gemini_ws_service_error">Gemini interrupted the session because of a temporary service problem (WebSocket %1$d). Try again later.</string>
+    <string name="gemini_ws_closed">Gemini closed the connection (WebSocket %1$d). Start another conversation; if it repeats, report this code.</string>
 </resources>
