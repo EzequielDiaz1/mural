@@ -1,0 +1,40 @@
+name: Personal Android APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/gemini-android]
+    paths: ['apps/android/**', '.github/workflows/personal-apk.yml']
+permissions:
+  contents: read
+concurrency:
+  group: personal-apk-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install Android SDK
+        run: $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
+      - name: Test, lint and build
+        working-directory: apps/android
+        run: ./gradlew --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: mural-gemini-android
+          path: apps/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: personal-android-test-reports
+          path: apps/android/app/build/reports/
+          retention-days: 14

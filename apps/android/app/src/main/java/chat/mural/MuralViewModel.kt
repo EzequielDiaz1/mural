@@ -117,9 +117,31 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val repository = LearningRepository(application)
-    private val credentials = CredentialStore(application)
-    private val api = APIClient(credentials)
-    private val transport = LiveTransport(application, viewModelScope)
+    private val openaiCredentials = CredentialStore(application)
+    private val geminiCredentials = CredentialStore(application, AIProvider.GEMINI)
+    private val aiPreferences = application.getSharedPreferences("mural_ai_provider", android.content.Context.MODE_PRIVATE)
+    var aiProvider by mutableStateOf(runCatching {
+        AIProvider.valueOf(aiPreferences.getString("selected", null)
+            ?: if (openaiCredentials.hasKey) "OPENAI" else "GEMINI")
+    }.getOrDefault(AIProvider.GEMINI)); private set
+    val usesGemini get() = aiProvider == AIProvider.GEMINI && conversationProvider == ConversationProvider.PERSONAL_KEY
+    private val credentials get() = if (aiProvider == AIProvider.GEMINI) geminiCredentials else openaiCredentials
+    private val api = APIClient(openaiCredentials)
+    private val geminiApi = GeminiAPIClient(geminiCredentials)
+    private val openaiTransport = LiveTransport(application, viewModelScope)
+    private val geminiTransport = GeminiLiveTransport(application, viewModelScope)
+    private val transport: VoiceTransport get() = if (usesGemini) geminiTransport else openaiTransport
+
+    fun selectAIProvider(name: String) {
+        if (isRunning || !storageReady) return
+        val choice = runCatching { AIProvider.valueOf(name) }.getOrNull() ?: return
+        actionJob?.cancel(); clearLookup(); finalAssessments.cancelAll(); meanings.reset()
+        generation++; resetConversation()
+        aiProvider = choice
+        aiPreferences.edit().putString("selected", choice.name).apply()
+        hasKey = credentials.hasKey
+        selectConversationProvider(ConversationProvider.PERSONAL_KEY)
+    }
     private val providerStore = ConversationProviderStore(application)
     private val hostedConfiguration = HostedConfiguration.parse(BuildConfig.MANAGED_API_ORIGIN)
     private val accountConfiguration = ManagedAccountConfiguration.parse(BuildConfig.MANAGED_API_ORIGIN, BuildConfig.GOOGLE_SERVER_CLIENT_ID)
@@ -246,15 +268,17 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
-        transport.onEvent = { event ->
+        for (voiceTransport in listOf(openaiTransport, geminiTransport)) {
+        voiceTransport.onEvent = { event ->
             try { handle(event) }
             catch (_: IllegalArgumentException) { notice = getApplication<Application>().getString(R.string.notice_invalid_voice_update) }
             catch (_: IllegalStateException) { notice = getApplication<Application>().getString(R.string.notice_invalid_voice_update) }
         }
-        transport.onFailure = { fail(it) }
-        transport.onLevels = { input, output ->
+        voiceTransport.onFailure = { fail(it) }
+        voiceTransport.onLevels = { input, output ->
             inputLevel = input; outputLevel = output
             if (input > 0.03 || output > 0.03) lastActivity = nowSeconds()
+        }
         }
         meanings.onChange = { meaning = meanings.text; translating = meanings.isLoading; meaningFailed = meanings.error != null }
         meanings.onResult = { request, result ->
@@ -474,7 +498,11 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
             return hostedBindings.respond(localID, purpose, logicalID, instructions, input, schema, search)
         }
         if (localID == null && conversationProvider == ConversationProvider.HOSTED_MINUTES) throw HostedFailure.Unavailable
-        return api.respond(instructions, input, schema, search, purpose)
+        val owner = if (localID == null) aiProvider else runCatching {
+            AIProvider.valueOf(aiPreferences.getString("session.$localID", "OPENAI")!!)
+        }.getOrDefault(AIProvider.OPENAI)
+        val client: TeachingClient = if (owner == AIProvider.GEMINI) geminiApi else api
+        return client.respond(instructions, input, schema, search, purpose)
     }
     private fun helperContext(snapshot: SessionRecord, passage: Passage? = null): String =
         if (snapshot.id in hostedSessionIDs) ConversationHistory.helperContext(snapshot, passage)
@@ -650,6 +678,7 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
         voiceSession = voice; lastActivity = nowSeconds()
         val record = SessionRecord(id = id, languageID = language.id, themeID = selectedTheme?.id, title = selectedTheme?.title ?: language.defaultTitle)
         topicResult?.takeIf { it.languageID == language.id && selectedTheme?.id == "current" }?.let { record.topics += it }
+        aiPreferences.edit().putString("session.$id", aiProvider.name).apply()
         session = record; save(record)
     }
     fun start() {
@@ -673,7 +702,9 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
         if (choice == ConversationProvider.HOSTED_MINUTES) accountChangeBlocked = true
         connectionJob = viewModelScope.launch {
             try {
-                val provider: LiveSessionProvider = if (choice == ConversationProvider.PERSONAL_KEY) api else {
+                val provider: LiveSessionProvider = if (choice == ConversationProvider.PERSONAL_KEY) {
+                    if (aiProvider == AIProvider.GEMINI) geminiApi else api
+                } else {
                     val owner = requireHostedOwner()
                     if (selectedAccount.busy || owner.accountID != hostedReadiness.accountID) throw HostedFailure.SignInRequired
                     val hosted = hostedClient(owner.accountID)
@@ -1010,6 +1041,7 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteSession(id: String) {
         if (isRunning) return
         if (reportState.value.selection?.sessionID == id) reports.dismiss()
+        aiPreferences.edit().remove("session.$id").apply()
         finalAssessments.cancel(id); hostedFinalAssessmentJobs.remove(id)?.cancel(); hostedBindings.forgetLearning(id)
         finalAssessmentTickets = finalAssessmentTickets.filterNot { it.sessionID == id }
         if (session?.id == id) resetConversation()
@@ -1031,6 +1063,7 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
         reports.dismiss()
         finalAssessments.cancelAll(); hostedSessionIDs.forEach(hostedBindings::forgetLearning)
         hostedFinalAssessmentJobs.values.toList().forEach { it.cancel() }; hostedFinalAssessmentJobs.clear(); resetConversation()
+        aiPreferences.edit().apply { aiPreferences.all.keys.filter { it.startsWith("session.") }.forEach { remove(it) } }.apply()
         finalAssessmentTickets = emptyList()
         archive = archive.copy(sessions = mutableListOf(), preferences = archive.preferences.copy(hiddenWords = emptyList())); persist()
     }
@@ -1040,5 +1073,5 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
         return try { archive = ArchiveCodec.merge(archive, prepareImportedArchive(data)); persist(); notice = getApplication<Application>().getString(R.string.notice_backup_imported); true }
         catch (_: Exception) { presentError(getApplication<Application>().getString(R.string.error_import_failed)); false }
     }
-    override fun onCleared() { hostedBindings.disableHelpers(); transport.disconnect(); super.onCleared() }
+    override fun onCleared() { hostedBindings.disableHelpers(); openaiTransport.disconnect(); geminiTransport.disconnect(); super.onCleared() }
 }

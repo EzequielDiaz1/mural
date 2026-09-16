@@ -90,6 +90,19 @@ fun SettingsScreen(vm: MuralViewModel, onExport: () -> Unit, onImport: () -> Uni
         LazyColumn(Modifier.weight(1f).testTag("settings-screen"), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(22.dp)) {
             item {
+                SettingsGroup(stringResource(R.string.settings_ai_provider),
+                    stringResource(R.string.settings_gemini_note)) {
+                    SettingsChoiceRow(stringResource(R.string.settings_ai_provider), vm.aiProvider.label, vm.aiProvider.name,
+                        chat.mural.network.AIProvider.entries.map { it.name to it.label }, "settings-ai-provider", !vm.isRunning, vm::selectAIProvider)
+                    SettingsDivider()
+                    SettingsRow(stringResource(if (vm.hasKey) R.string.settings_replace_key else R.string.settings_save_key),
+                        enabled = !vm.isRunning, tint = MuralColors.Secondary, chevron = true, onClick = { keyDialog = true })
+                    SettingsDivider()
+                    SettingsRow(stringResource(R.string.settings_open_api_keys), tint = MuralColors.Secondary,
+                        onClick = { open(if (vm.usesGemini) "https://aistudio.google.com/app/api-keys" else "https://platform.openai.com/api-keys") })
+                }
+            }
+            item {
                 SettingsGroup(stringResource(R.string.settings_just_your_pace),
                     stringResource(if (vm.isRunning) R.string.settings_language_running_footer else R.string.settings_language_footer)) {
                     SettingsChoiceRow(stringResource(R.string.settings_learning_language), vm.language.settingsTitle, vm.language.id,
@@ -131,11 +144,6 @@ fun SettingsScreen(vm: MuralViewModel, onExport: () -> Unit, onImport: () -> Uni
                             SettingsDivider()
                             if (vm.hasKey) Text(stringResource(R.string.settings_key_saved_notice), style = MaterialTheme.typography.bodySmall,
                                 color = MuralColors.Secondary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
-                            SettingsRow(stringResource(if (vm.hasKey) R.string.settings_replace_key else R.string.settings_save_key),
-                                enabled = !vm.isRunning, tint = MuralColors.Secondary, chevron = true, onClick = { keyDialog = true })
-                            SettingsDivider()
-                            SettingsRow(stringResource(R.string.settings_open_api_keys), tint = MuralColors.Secondary,
-                                onClick = { open("https://platform.openai.com/api-keys") })
                             if (vm.hasKey) {
                                 SettingsDivider()
                                 SettingsRow(stringResource(R.string.settings_remove_key), enabled = !vm.isRunning,
@@ -149,7 +157,7 @@ fun SettingsScreen(vm: MuralViewModel, onExport: () -> Unit, onImport: () -> Uni
             }
             item {
                 val usage = UsageSummary.of(vm.archive.sessions)
-                SettingsGroup(stringResource(R.string.settings_keep_comfortable), stringResource(R.string.settings_usage_footer)) {
+                SettingsGroup(stringResource(R.string.settings_keep_comfortable), stringResource(if (vm.usesGemini) R.string.settings_gemini_usage else R.string.settings_usage_footer)) {
                     val limits = (listOf(5, 10, 15, 20, 30, 60) + prefs.sessionMinutes).distinct().sorted()
                     SettingsChoiceRow(stringResource(R.string.settings_conversation_limit), stringResource(R.string.settings_limit_minutes, prefs.sessionMinutes),
                         prefs.sessionMinutes.toString(), limits.map { it.toString() to stringResource(R.string.settings_limit_minutes, it) },
@@ -157,12 +165,12 @@ fun SettingsScreen(vm: MuralViewModel, onExport: () -> Unit, onImport: () -> Uni
                     SettingsDivider()
                     SettingsRow(stringResource(R.string.settings_voice_time_label), usage.voiceTime)
                     SettingsDivider()
-                    SettingsRow(stringResource(R.string.settings_voice_estimate_label), usage.voiceEstimate)
+                    SettingsRow(stringResource(R.string.settings_voice_estimate_label), if (vm.usesGemini) "—" else usage.voiceEstimate)
                     SettingsDivider()
                     SettingsRow(stringResource(R.string.settings_search_calls_label), usage.searchCalls.toString())
                     SettingsDivider()
                     SettingsRow(stringResource(R.string.settings_usage_billing_link), tint = MuralColors.Secondary,
-                        onClick = { open("https://platform.openai.com/usage") })
+                        onClick = { open(if (vm.usesGemini) "https://aistudio.google.com/usage" else "https://platform.openai.com/usage") })
                 }
             }
             item {
@@ -199,11 +207,11 @@ fun SettingsScreen(vm: MuralViewModel, onExport: () -> Unit, onImport: () -> Uni
                 SettingsGroup {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(stringResource(R.string.settings_app_version_footer, version), style = MaterialTheme.typography.bodySmall, color = MuralColors.Secondary)
-                        Text(stringResource(R.string.settings_models_footer), style = MaterialTheme.typography.bodySmall, color = MuralColors.Secondary)
+                        Text(if (vm.usesGemini) "Gemini Live · ${chat.mural.network.GeminiAPIClient.LIVE_MODEL}\n${chat.mural.network.GeminiAPIClient.TEXT_MODEL}" else stringResource(R.string.settings_models_footer), style = MaterialTheme.typography.bodySmall, color = MuralColors.Secondary)
                     }
                     SettingsDivider()
                     SettingsRow(stringResource(R.string.settings_openai_data_controls), tint = MuralColors.Secondary,
-                        onClick = { open("https://developers.openai.com/api/docs/guides/your-data") })
+                        onClick = { open(if (vm.usesGemini) "https://ai.google.dev/gemini-api/terms" else "https://developers.openai.com/api/docs/guides/your-data") })
                     Text(stringResource(R.string.settings_data_use_footer), style = MaterialTheme.typography.bodySmall,
                         color = MuralColors.Secondary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                     SettingsDivider()
