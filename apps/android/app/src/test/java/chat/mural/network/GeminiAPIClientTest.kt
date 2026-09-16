@@ -10,12 +10,17 @@ import org.junit.Test
 
 class GeminiAPIClientTest {
     @Test fun `keys cannot be used with the wrong provider`() {
-        val google = "AIza" + "x".repeat(35)
+        val standardGoogle = "AIza" + "x".repeat(35)
+        val authorizationGoogle = "AQ." + "x".repeat(52)
         val openai = "sk-" + "x".repeat(40)
-        assertTrue(AIProvider.GEMINI.acceptsKey(google))
-        assertFalse(AIProvider.OPENAI.acceptsKey(google))
+        assertTrue(AIProvider.GEMINI.acceptsKey(standardGoogle))
+        assertTrue(AIProvider.GEMINI.acceptsKey(authorizationGoogle))
+        assertFalse(AIProvider.OPENAI.acceptsKey(standardGoogle))
+        assertFalse(AIProvider.OPENAI.acceptsKey(authorizationGoogle))
         assertFalse(AIProvider.GEMINI.acceptsKey(openai))
-        assertFalse(AIProvider.GEMINI.acceptsKey(google + "\n"))
+        assertFalse(AIProvider.GEMINI.acceptsKey(standardGoogle + "\n"))
+        assertFalse(AIProvider.GEMINI.acceptsKey("AQ.invalid.key"))
+        assertFalse(AIProvider.GEMINI.acceptsKey("random-secret-value-that-is-not-a-google-key"))
     }
 
     @Test fun `structured teaching sends Google auth without putting credentials in URL or body`() = runBlocking {

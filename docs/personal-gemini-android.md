@@ -16,6 +16,7 @@ No hace falta Android Studio para instalar: GitHub Actions genera el APK.
 La API key se introduce únicamente en la app, nunca en GitHub, el código o los logs.
 Cada proveedor tiene un almacén cifrado con Android Keystore independiente; ninguno se exporta en backups.
 No hay cambio automático de proveedor al agotar una cuota.
+Se aceptan las authorization keys actuales (`AQ.`) y las standard keys restringidas anteriores (`AIza`).
 
 ## Alcance
 
