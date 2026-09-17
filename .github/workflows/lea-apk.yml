@@ -20,9 +20,23 @@ jobs:
           java-version: '17'
       - name: Install Android SDK
         run: $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
-      - name: Build original Lea source
+      - name: Accept AQ authorization keys and add regression test
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("apps/android/app/src/main/java/chat/mural/core/AIProvider.kt")
+          s = p.read_text()
+          old = "GEMINI -> key.length >= 30 && key.all { it.isLetterOrDigit() || it == '-' || it == '_' }"
+          assert s.count(old) == 1
+          p.write_text(s.replace(old, "GEMINI -> key.length >= 30 && key.removePrefix(\"AQ.\").all { it.isLetterOrDigit() || it == '-' || it == '_' }"))
+          t = Path("apps/android/app/src/test/java/chat/mural/core/AIProviderTest.kt")
+          s = t.read_text()
+          t.write_text(s.replace("class AIProviderTest {", "class AIProviderTest {\n" + "    @Test fun geminiAuthorizationKeysAcceptOnlyTheirPrefixDot() {\n        assertTrue(AIProvider.GEMINI.isValidKey(\"AQ.\" + \"a\".repeat(40)))\n        assertFalse(AIProvider.GEMINI.isValidKey(\"AQ.\" + \"a\".repeat(40) + \".\"))\n        assertFalse(AIProvider.GEMINI.isValidKey(\"AQ.\" + \"a\".repeat(40) + \" \"))\n        assertFalse(AIProvider.GEMINI.isValidKey(\"AQ.short\"))\n    }\n\n"))
+          
+          PY
+      - name: Test and build Lea with AQ support
         working-directory: apps/android
-        run: bash gradlew --no-daemon :app:assembleDebug
+        run: bash gradlew --no-daemon :app:testDebugUnitTest --tests chat.mural.core.AIProviderTest :app:assembleDebug
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: mural-lea-gemini
